@@ -24,7 +24,7 @@ COMP_TEMPLATES_PATH = str(DATA_DIR / "complex_candidate_templates.msgpack")
 FIRM_MAP_PATH = str(DATA_DIR / "firm_template_map.msgpack")
 
 # API KEYS
-HUNTER_IO = "aa8a2b0e40b3abce6628a6c127179bec5c637748"
+HUNTER_IO = ""
 
 # Initialize CatBoost Engine
 cat_std = email_predictor.CatBoostTemplatePredictor(CATBOOST_STD_MODEL_PATH)
