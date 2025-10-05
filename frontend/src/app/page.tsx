@@ -2,18 +2,15 @@
  * @file Home.tsx
  * @description
  * Main page component for the investor email prediction UI.
- * 
- * Renders three input controls:
- *  - Investor Name: simple text field
- *  - Firm: type-ahead autocomplete with validation
- *  - Domain: conditional dropdown (readonly for single domain, selectable for multi-domain firms)
- * 
- * Handles all form logic client-side using React state.
- * 
- * Later stages:
- *  - Firm/domain lists will be fetched from a backend API or database.
- *  - Validation will run against live data instead of hardcoded arrays.
- * 
+ *
+ * Provides three input controls:
+ *  - Investor Name: free-text field
+ *  - Firm: autocomplete input powered by the /api/firms endpoint
+ *  - Domain: conditional dropdown fetched via /api/domains/[firmId]
+ *
+ * Both dropdowns (firm + domain) close automatically when the user clicks outside.
+ * The component is designed to later integrate with the prediction API.
+ *
  * @module Home
  * @returns {JSX.Element} Fully rendered page component
  * 
@@ -26,69 +23,115 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { useClickOutside } from "@/hooks/useClickOutside";
+
+// Firm interface for typed Prisma API responses
+interface Firm {
+  id: number;
+  name: string;
+}
 
 export default function Home() {
   // React state variables
-  // ----------------------------
-  const [investor, setInvestor] = useState("");               // Investor name input
-  const [firm, setFirm] = useState("");                       // Firm name input (autocomplete)
-  const [domain, setDomain] = useState("");                   // Selected domain for that firm
-  const [showDropdown, setShowDropdown] = useState(false);    // Controls firm autocomplete dropdown visibility
-  const [showDomainDropdown, setShowDomainDropdown] = useState(false); // Controls domain dropdown visibility
 
-  // Demo firm + domain data
-  // (in production this will come from a database or API)
-  // ----------------------------
-  const firms = [
-    "Blackstone",
-    "Sequoia Capital",
-    "Andreessen Horowitz",
-    "test2",
-    "test3",
-    "test4",
-  ];
+  // Form fields
+  const [investor, setInvestor] = useState("");               // Investor name (free text)
+  const [firm, setFirm] = useState("");                       // Firm name (typed text)
+  const [firmId, setFirmId] = useState<number | null>(null);  // Firm ID (used for domain lookups)
+  const [domain, setDomain] = useState("");                   // Selected domain for firm
 
-  const domains: Record<string, string[]> = {
-    Blackstone: ["blackstone.com"],
-    "Sequoia Capital": ["sequoiacap.com", "sequoia.com"],
-    "Andreessen Horowitz": ["a16z.com"],
-    test2: ["test2.com"],
-    test3: ["test3.com"],
-    test4: ["test4.com"],
+  // API-driven data
+  const [firms, setFirms] = useState<Firm[]>([]);             // Fuzzy-matched firm list from /api/firms
+  const [domains, setDomains] = useState<string[]>([]);       // Domains belonging to selected firm
+
+  // UI control states
+  const [showDropdown, setShowDropdown] = useState(false);    // Controls visibility of firm autocomplete
+  const [showDomainDropdown, setShowDomainDropdown] = useState(false); // Controls visibility of domain dropdown
+
+  // Data fetching logic
+
+  /**
+   * Fetch firm suggestions as the user types.
+   * - Triggers only for 2+ characters to reduce API load.
+   * - Cancels previous requests using AbortController to avoid race conditions.
+   */
+  useEffect(() => {
+    if (firm.trim().length < 2) {
+      setFirms([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const fetchFirms = async () => {
+      try {
+        const res = await fetch(`/api/firms?query=${encodeURIComponent(firm)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Failed to fetch firms");
+        const data = await res.json();
+        setFirms(data);
+      } catch (err) {
+        // Ignore abort errors (these happen when typing quickly)
+        if (!(err instanceof DOMException && err.name === "AbortError"))
+          console.error(err);
+      }
+    };
+
+    fetchFirms();
+    return () => controller.abort(); // cleanup on re-render or unmount
+  }, [firm]);
+
+  /**
+   * Fetch domains whenever a firm is selected.
+   * - Triggered by firmId changes (set after firm selection).
+   * - Sets both the domains list and the default selected domain.
+   */
+  useEffect(() => {
+    if (!firmId) return;
+
+    const fetchDomains = async () => {
+      const res = await fetch(`/api/domains/${firmId}`);
+      const data = await res.json();
+      setDomains(data);
+      setDomain(data[0] || ""); // pick the first domain automatically
+    };
+
+    fetchDomains();
+  }, [firmId]);
+
+  // Event handlers
+
+  /**
+   * Handle firm selection from autocomplete list.
+   * - Sets both firm name and firmId.
+   * - Closes the dropdown once selected.
+   */
+  const handleFirmSelect = (f: Firm) => {
+    setFirm(f.name);
+    setFirmId(f.id);
+    setShowDropdown(false);
   };
 
-  // Filter firm list based on user input (case-insensitive)
-  // Only runs client-side, lightweight
-  // ----------------------------
-  const filteredFirms = firms.filter((f) =>
-    f.toLowerCase().includes(firm.toLowerCase())
-  );
+  // Dropdown close logic (click outside)
 
-  // Handles firm selection from dropdown
-  // - Sets firm name and default domain
-  // - Clears transient filter state
-  // - Hides firm dropdown
-  // ----------------------------
-  const handleFirmSelect = (f: string) => {
-    setFirm(f);
-    setDomain(domains[f]?.[0] ?? ""); // pick first domain automatically
+  // Refs for both dropdown wrappers
+  const firmRef = useRef<HTMLDivElement | null>(null);
+  const domainRef = useRef<HTMLDivElement | null>(null);
 
-    // Reset filtered firms list (forces dropdown to disappear cleanly)
-    setTimeout(() => {
-      setFirm("");
-      setFirm(f); // reapply the chosen firm
-    }, 0);
+  // Attach click-outside handlers to close dropdowns
+  useClickOutside(firmRef, () => setShowDropdown(false));
+  useClickOutside(domainRef, () => setShowDomainDropdown(false));
 
-    setShowDropdown(false); // close firm dropdown
-  };
+  // ---------------------------------------------------------------------------
+  // Render JSX
+  // ---------------------------------------------------------------------------
 
-  // Main JSX layout
-  // ----------------------------
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 font-sans">
-      {/* Logo at top */}
+      {/* Logo header */}
       <Image
         src="/next.svg"
         alt="Next.js logo"
@@ -97,7 +140,7 @@ export default function Home() {
         className="mb-8 dark:invert"
       />
 
-      {/* Main content area (input controls) */}
+      {/* Main input section */}
       <div className="flex flex-col gap-6 w-full max-w-sm">
 
         {/* Investor Name Input */}
@@ -113,34 +156,24 @@ export default function Home() {
         </div>
 
         {/* Firm Name Autocomplete */}
-        <div className="relative w-full max-w-sm">
+        <div className="relative w-full max-w-sm" ref={firmRef}>
           <label className="block text-sm font-medium mb-1">Firm</label>
 
           <input
             type="text"
             value={firm}
             onChange={(e) => {
-              setFirm(e.target.value);  // update input text
-              setShowDropdown(true);    // show suggestion list
+              setFirm(e.target.value);     // Update input text
+              setShowDropdown(true);       // Open dropdown
             }}
-            onFocus={() => setShowDropdown(true)} // show dropdown when input gains focus
-            onBlur={() => {
-              // Validate input when leaving field
-              const normalized = firm.trim().toLowerCase();
-              const isValid = firms.some((f) => f.toLowerCase() === normalized);
-              if (!isValid) {
-                // Reset invalid firm names
-                setFirm("");
-                setDomain("");
-              }
-              setShowDropdown(false); // always close dropdown on blur
-            }}
+            onFocus={() => setShowDropdown(true)} // Reopen on focus
+            onBlur={() => setTimeout(() => setShowDropdown(false), 100)} // Delay to allow click selection
             placeholder="Start typing firm name..."
             className="w-full px-3 py-2 border rounded-lg"
           />
 
-          {/* Dropdown with filtered firm matches */}
-          {showDropdown && filteredFirms.length > 0 && (
+          {/* Autocomplete dropdown */}
+          {showDropdown && firms.length > 0 && (
             <ul
               className="
                 absolute left-0 right-0 top-full z-10
@@ -148,71 +181,58 @@ export default function Home() {
                 max-h-40 overflow-auto
               "
             >
-              {filteredFirms.map((f) => (
+              {firms.map((f) => (
                 <li
-                  key={f}
-                  onMouseDown={(e) => e.preventDefault()} // prevent blur before click
-                  onClick={() => handleFirmSelect(f)}    // handle firm click
+                  key={f.id}
+                  onMouseDown={(e) => e.preventDefault()} // Prevent blur before click
+                  onClick={() => handleFirmSelect(f)}     // Select firm
                   className="px-3 py-1 hover:bg-gray-100 cursor-pointer"
                 >
-                  {f}
+                  {f.name}
                 </li>
               ))}
             </ul>
           )}
         </div>
 
-        {/* Domain Dropdown  */}
-        <div className="relative w-full max-w-sm">
+        {/* Domain Dropdown */}
+        <div className="relative w-full max-w-sm" ref={domainRef}>
           <label className="block text-sm font-medium mb-1">Domain</label>
 
-          {firm && domains[firm] ? (
-            // If firm has multiple domains -> show dropdown
-            domains[firm].length > 1 ? (
-              <>
-                {/* Active domain display (click to open dropdown) */}
-                <div
-                  className="w-full px-3 py-2 border rounded-lg bg-white cursor-pointer"
-                  onClick={() => setShowDomainDropdown((prev) => !prev)}
-                >
-                  {domain || domains[firm][0]}
-                </div>
+          {domains.length > 1 ? (
+            <>
+              {/* Active domain display (click to expand dropdown) */}
+              <div
+                className="w-full px-3 py-2 border rounded-lg bg-white cursor-pointer"
+                onClick={() => setShowDomainDropdown((prev) => !prev)}
+              >
+                {domain || domains[0]}
+              </div>
 
-                {/* Domain dropdown list */}
-                {showDomainDropdown && (
-                  <ul
-                    className="absolute left-0 right-0 top-full z-10 border rounded-lg mt-1 bg-white shadow max-h-40 overflow-auto"
-                  >
-                    {domains[firm].map((d) => (
-                      <li
-                        key={d}
-                        onMouseDown={(e) => e.preventDefault()} // prevent premature blur
-                        onClick={() => {
-                          setDomain(d);                 // set selected domain
-                          setShowDomainDropdown(false); // close dropdown
-                        }}
-                        className="px-3 py-1 hover:bg-gray-100 cursor-pointer"
-                      >
-                        {d}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            ) : (
-              // If only one domain -> show greyed-out readonly input
-              <input
-                type="text"
-                value={domains[firm][0]}
-                readOnly
-                className="w-full px-3 py-2 border rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
-              />
-            )
+              {/* Dropdown with multiple domains */}
+              {showDomainDropdown && (
+                <ul className="absolute left-0 right-0 top-full z-10 border rounded-lg mt-1 bg-white shadow max-h-40 overflow-auto">
+                  {domains.map((d) => (
+                    <li
+                      key={d}
+                      onMouseDown={(e) => e.preventDefault()} // Prevent losing focus
+                      onClick={() => {
+                        setDomain(d);
+                        setShowDomainDropdown(false);
+                      }}
+                      className="px-3 py-1 hover:bg-gray-100 cursor-pointer"
+                    >
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : (
-            // If no firm selected -> show placeholder
+            // Single-domain (readonly) state
             <input
               type="text"
-              value=""
+              value={domains[0] || ""}
               readOnly
               placeholder="Select a firm first"
               className="w-full px-3 py-2 border rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
