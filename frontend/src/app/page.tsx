@@ -49,6 +49,8 @@ export default function Home() {
   // UI control states
   const [showDropdown, setShowDropdown] = useState(false);    // Controls visibility of firm autocomplete
   const [showDomainDropdown, setShowDomainDropdown] = useState(false); // Controls visibility of domain dropdown
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<{ email: string; confidence: number }[]>([]);
 
   // Data fetching logic
 
@@ -115,6 +117,30 @@ export default function Home() {
     setShowDropdown(false);
   };
 
+  /**
+   * Handles Prediction.
+   * 
+   */
+  const handlePredict = async () => {
+    if (!investor || !firm) return alert("Please enter an investor name and firm.");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investor, firm, domain }),
+      });
+      if (!res.ok) throw new Error("Prediction request failed");
+      const data = await res.json();
+      setResults(data.predictions || []);
+    } catch (err) {
+      console.error(err);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Dropdown close logic (click outside)
 
   // Refs for both dropdown wrappers
@@ -133,8 +159,8 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen p-8 font-sans">
       {/* Logo header */}
       <Image
-        src="/next.svg"
-        alt="Next.js logo"
+        src="/AIP.png"
+        alt="AIP logo"
         width={160}
         height={34}
         className="mb-8 dark:invert"
@@ -239,6 +265,41 @@ export default function Home() {
             />
           )}
         </div>
+        {/* Predict Button */}
+        <button
+          onClick={handlePredict}
+          disabled={
+            loading ||
+            investor.trim().length === 0 ||
+            firm.trim().length === 0 ||
+            domain.trim().length === 0
+          }
+          className={`mt-4 w-full font-semibold py-2 px-4 rounded-lg transition-colors
+    ${loading ||
+              !investor.trim() ||
+              !firm.trim() ||
+              !domain.trim()
+              ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}
+        >
+          {loading ? "Predicting..." : "Predict"}
+        </button>
+
+        {/* Results Display */}
+        {results.length > 0 && (
+          <div className="mt-4 border rounded-lg p-4 bg-gray-50">
+            <h3 className="font-semibold mb-2 text-gray-800">Predicted Emails</h3>
+            <ul className="list-disc list-inside text-sm text-gray-700">
+              {results.map((r, i) => (
+                <li key={i} className="mb-1">
+                  <span className="font-mono">{r.email}</span>{" "}
+                  <span className="text-gray-500">({r.confidence.toFixed(1)}%)</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
