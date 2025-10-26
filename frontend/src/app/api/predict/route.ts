@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const { investor, firm, domain } = body;
 
     // Forward the request to FastAPI backend (CatBoost model)
-    const res = await fetch("http://127.0.0.1:8000/predict/catboost", {
+    const res = await fetch("http://127.0.0.1:8000/predict/catboost_verified", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     // Convert to frontend format: [{ email, confidence }]
     const predictions = data.map((item: any) => ({
       email: item.email,
-      confidence: item.score * 100, // Convert to percentage
+      confidence: item.score, // Convert to percentage
     }));
 
     // Return standardized JSON response
