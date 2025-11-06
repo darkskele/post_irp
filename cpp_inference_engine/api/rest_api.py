@@ -24,7 +24,7 @@ COMP_TEMPLATES_PATH = str(DATA_DIR / "complex_candidate_templates.msgpack")
 FIRM_MAP_PATH = str(DATA_DIR / "firm_template_map.msgpack")
 
 # API KEYS
-HUNTER_IO = "aa8a2b0e40b3abce6628a6c127179bec5c637748"
+HUNTER_IO = ""
 
 # Initialize CatBoost Engine
 cat_std = email_predictor.CatBoostTemplatePredictor(CATBOOST_STD_MODEL_PATH)
@@ -80,9 +80,7 @@ def predict_catboost(req: PredictionRequest):
         results = cat_engine.predict(
             req.name, req.firm, top_k=req.top_k, domain=req.domain
         )
-        return [
-            PredictionResponseItem(email=r.email, score=r.score) for r in results[:3]
-        ]
+        return [PredictionResponseItem(email=r.email, score=0) for r in results[:3]]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -100,11 +98,10 @@ def predict_catboost_verify(req: PredictionRequest):
             out.append(
                 PredictionResponseItem(
                     email=r.email,
-                    score=r.score,
-                    verification_status=(vr.status if vr else None),
-                    verification_score=(int(vr.score) if vr else None),
+                    score=vr.score if vr else 0.0,
                 )
             )
+        out.sort(key=lambda x: x.score, reverse=True)
         return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
