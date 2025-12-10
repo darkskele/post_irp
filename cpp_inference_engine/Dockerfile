@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     wget unzip g++ make libicu-dev git libmsgpack-dev \
     libcurl4-openssl-dev pkg-config \
     nlohmann-json3-dev \
+    ninja-build \
+    clang \
+    lld \
     && rm -f /usr/bin/python /usr/bin/python3 \
     && ln -s /usr/bin/python3.12 /usr/bin/python \
     && ln -s /usr/bin/python3.12 /usr/bin/python3 \
@@ -19,7 +22,8 @@ RUN wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0
     && tar -xzf cmake-3.28.0-linux-x86_64.tar.gz --strip-components=1 -C /usr/local \
     && rm cmake-3.28.0-linux-x86_64.tar.gz
 
-RUN pip install pybind11 --break-system-packages
+# Install build-time Python packages pybind11 + Conan
+RUN pip install pybind11 "conan>=2.4.1" --break-system-packages
 
 # Copy build across
 COPY cpp /build/cpp
@@ -29,6 +33,14 @@ COPY rapid_fuzz /build/rapid_fuzz
 COPY CMakeLists.txt /build/
 
 ENV CMAKE_PREFIX_PATH="/usr/local/lib/python3.12/site-packages/pybind11/share/cmake/pybind11"
+
+# Build CatBoost inside the container
+RUN cd /build/catboost && \
+    python3 build/build_native.py \
+      --build-root-dir $(pwd)/catboost_native_build \
+      --targets catboostmodel \
+      --build-type Release \
+      --parallel-build-jobs $(nproc)
 
 # Make
 RUN cmake . && make -j
